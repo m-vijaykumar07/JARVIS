@@ -1,0 +1,12 @@
+pyttsx3>=2.90
+speechrecognition>=3.14.0
+pyaudio>=0.2.14
+sounddevice>=0.5.0
+edge-tts>=7.0.0
+pyautogui>=0.9.54
+psutil>=5.9.0
+screen-brightness-control>=0.24.0
+pycaw>=20240203
+pygame>=2.6.0
+customtkinter>=5.2.0
+pyperclip>=1.8.0

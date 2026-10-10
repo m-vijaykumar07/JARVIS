@@ -21,8 +21,8 @@ class JarvisHUD(ctk.CTk):
         super().__init__()
 
         self.title("J.A.R.V.I.S. Core Interface")
-        self.geometry("500x720")
-        self.minsize(440, 600)
+        self.geometry("500x740")
+        self.minsize(440, 620)
         self.configure(fg_color=config.COLOR_BG_DARK)
 
         # State management
@@ -50,7 +50,7 @@ class JarvisHUD(ctk.CTk):
     def _build_ui(self):
         # ---------------- Top Header Bar ----------------
         self.header_frame = ctk.CTkFrame(self, fg_color=config.COLOR_BG_CARD, height=45, corner_radius=12)
-        self.header_frame.pack(fill="x", padx=14, pady=(12, 6))
+        self.header_frame.pack(fill="x", padx=14, pady=(12, 4))
 
         self.lbl_title = ctk.CTkLabel(
             self.header_frame,
@@ -85,6 +85,18 @@ class JarvisHUD(ctk.CTk):
             command=self.hide_to_background
         )
         self.btn_min.pack(side="right", padx=(2, 4), pady=6)
+
+        # ---------------- Active Microphone Indicator ----------------
+        self.mic_info_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.mic_info_frame.pack(fill="x", padx=16, pady=(2, 2))
+
+        self.lbl_mic = ctk.CTkLabel(
+            self.mic_info_frame,
+            text=f"🎙️ Mic: {listener.active_mic_name[:32]}",
+            font=ctk.CTkFont(family="Consolas", size=11),
+            text_color="#00b4d8"
+        )
+        self.lbl_mic.pack(side="left")
 
         # ---------------- Arc Reactor Canvas ----------------
         self.canvas_size = 170
@@ -141,7 +153,7 @@ class JarvisHUD(ctk.CTk):
             wrap="word"
         )
         self.transcript_box.pack(fill="both", expand=True, padx=14, pady=8)
-        self._add_terminal_log("JARVIS", "Core initialized. Acoustic surveillance active. Say 'Hey Jarvis' anytime.")
+        self._add_terminal_log("JARVIS", "Core online. Acoustic surveillance engaged. Say 'Hey Jarvis' to wake.")
 
         # ---------------- Bottom Command Bar ----------------
         self.bottom_frame = ctk.CTkFrame(self, fg_color=config.COLOR_BG_CARD, height=52, corner_radius=12)
@@ -247,6 +259,9 @@ class JarvisHUD(ctk.CTk):
         self.after(0, lambda: self._update_status_label(state, detail))
 
     def _update_status_label(self, state: str, detail: str):
+        if hasattr(self, 'lbl_mic'):
+            self.lbl_mic.configure(text=f"🎙️ Mic: {listener.active_mic_name[:32]}")
+
         if state == "STANDBY":
             self.lbl_status.configure(text='STANDBY // SAY "HEY JARVIS"', text_color=config.COLOR_ACCENT_GLOW)
             self.btn_mic.configure(fg_color="#006699")

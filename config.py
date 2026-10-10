@@ -20,27 +20,29 @@ SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
 USER_NAME = "Sir"
 ASSISTANT_NAME = "JARVIS"
 
-# Wake Words (including phonetic variations for instant recognition)
+# Wake Words (Vosk Vocabulary Supported)
 WAKE_WORDS = [
     "hey jarvis",
     "jarvis",
     "wake up jarvis",
+    "wake up",
     "hello jarvis",
     "hi jarvis",
     "ok jarvis",
-    "hey javis",
-    "javis",
-    "travis",
-    "service"
+    "service",
+    "travis"
 ]
 
 # Audio Settings
 MIC_SAMPLE_RATE = 16000
-MIC_CHUNK_SIZE = 4000
+MIC_CHUNK_SIZE = 2000
 ENERGY_THRESHOLD = 150       # Low ambient threshold for laptop built-in mic
 DYNAMIC_ENERGY = True
 PAUSE_THRESHOLD = 0.7
 PHRASE_TIME_LIMIT = 8
+
+# Selected Microphone Index (None for smart auto-detect)
+PREFERRED_MIC_INDEX = None
 
 # Voice & Speech Synthesis (TTS) Settings
 TTS_ENGINE_PREFERENCE = "edge-tts"

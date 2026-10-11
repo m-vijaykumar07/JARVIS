@@ -1,0 +1,15 @@
+{
+  "notes": [
+    {
+      "id": 1,
+      "content": "review security audit tomorrow",
+      "created_at": "2026-10-11 19:04:11"
+    },
+    {
+      "id": 2,
+      "content": "review security audit tomorrow",
+      "created_at": "2026-10-11 19:06:20"
+    }
+  ],
+  "reminders": []
+}

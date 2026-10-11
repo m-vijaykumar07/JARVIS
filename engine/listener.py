@@ -1,7 +1,7 @@
 """
 JARVIS Listener Engine
 Real-time continuous background acoustic surveillance using Vosk offline grammar-constrained
-streaming for zero-latency wake word detection ('Hey Jarvis') and command processing.
+streaming with interruption handling, physical mic auto-detection, and continuous multi-turn dialogue.
 """
 import os
 import json
@@ -12,6 +12,7 @@ import speech_recognition as sr
 from engine.sound_effects import sound_fx
 from engine.speaker import speaker
 from engine.commander import commander
+from engine.task_manager import task_manager, TaskState
 import config
 
 try:
@@ -33,7 +34,6 @@ def find_best_microphone(p: pyaudio.PyAudio) -> tuple[int, str]:
             if info.get('maxInputChannels', 0) > 0:
                 name = info.get('name', '')
                 nl = name.lower()
-                # Skip loopback / stereo mix
                 if any(skip in nl for skip in ['stereo mix', 'mapper', 'primary sound', 'virtual', 'cable']):
                     continue
                 candidates.append((i, name))
@@ -56,17 +56,18 @@ def find_best_microphone(p: pyaudio.PyAudio) -> tuple[int, str]:
         if 'microphone' in nl or 'mic' in nl:
             return idx, name
 
-    # Fallback to first valid physical candidate
     return candidates[0][0], candidates[0][1]
 
 
 class Listener:
-    def __init__(self, state_callback=None, transcript_callback=None, wake_callback=None):
+    def __init__(self, state_callback=None, transcript_callback=None, wake_callback=None, rich_callback=None):
         self.state_callback = state_callback
         self.transcript_callback = transcript_callback
         self.wake_callback = wake_callback
+        self.rich_callback = rich_callback
 
         self.is_running = False
+        self.is_paused = False
         self._thread = None
         self._manual_wake_flag = threading.Event()
         self._is_active_listening = False
@@ -74,7 +75,7 @@ class Listener:
         self.active_mic_index = 0
         self.active_mic_name = "Detecting..."
 
-        # SpeechRecognizer fallback & command transcription
+        # SpeechRecognizer for continuous & command transcription
         self.recognizer = sr.Recognizer()
         self.recognizer.energy_threshold = config.ENERGY_THRESHOLD
         self.recognizer.dynamic_energy_threshold = config.DYNAMIC_ENERGY
@@ -88,13 +89,15 @@ class Listener:
             except Exception as e:
                 print(f"[Listener] Vosk init note: {e}")
 
-    def set_callbacks(self, state_callback=None, transcript_callback=None, wake_callback=None):
+    def set_callbacks(self, state_callback=None, transcript_callback=None, wake_callback=None, rich_callback=None):
         if state_callback:
             self.state_callback = state_callback
         if transcript_callback:
             self.transcript_callback = transcript_callback
         if wake_callback:
             self.wake_callback = wake_callback
+        if rich_callback:
+            self.rich_callback = rich_callback
 
     def _notify_state(self, state: str, detail: str = ""):
         if self.state_callback:
@@ -117,11 +120,19 @@ class Listener:
             except Exception:
                 pass
 
+    def _notify_rich(self, structured_res: dict):
+        if self.rich_callback:
+            try:
+                self.rich_callback(structured_res)
+            except Exception:
+                pass
+
     def start(self):
         """Starts background continuous listening thread."""
         if self.is_running:
             return
         self.is_running = True
+        self.is_paused = False
         self._thread = threading.Thread(target=self._run_loop, daemon=True)
         self._thread.start()
 
@@ -129,19 +140,35 @@ class Listener:
         """Stops listening."""
         self.is_running = False
 
+    def pause_listening(self):
+        self.is_paused = True
+        self._notify_state("PAUSED", "Microphone paused.")
+
+    def resume_listening(self):
+        self.is_paused = False
+        self._notify_state("STANDBY", "Resumed listening.")
+
     def trigger_wake_manually(self):
-        """Manually wakes JARVIS (from HUD button or hotkey)."""
+        """Manually wakes JARVIS."""
         self._manual_wake_flag.set()
 
     def process_typed_command(self, text: str):
-        """Executes a command entered via text bar."""
+        """Executes a command entered via text bar or UI."""
         if not text or not text.strip():
             return
         self._notify_transcript("User", text)
-        self._notify_state("PROCESSING", f"Analyzing: {text}")
-        response = commander.process(text)
-        self._notify_transcript("JARVIS", response)
-        speaker.speak(response, block=False)
+        task_manager.set_state(TaskState.THINKING, f"Analyzing: {text}")
+
+        res = commander.process_structured(text)
+        spoken = res.get("spoken", "")
+        display = res.get("display", spoken)
+
+        self._notify_transcript("JARVIS", display)
+        self._notify_rich(res)
+
+        if spoken:
+            speaker.speak(spoken, block=False)
+        task_manager.set_state(TaskState.IDLE, "Ready")
 
     def _check_wake_word(self, text: str) -> tuple[bool, str]:
         """Checks if text contains any wake word and extracts trailing command."""
@@ -160,7 +187,6 @@ class Listener:
         """Main acoustic surveillance loop."""
         p = pyaudio.PyAudio()
 
-        # Find best active microphone (never Stereo Mix)
         if config.PREFERRED_MIC_INDEX is not None:
             self.active_mic_index = config.PREFERRED_MIC_INDEX
             self.active_mic_name = f"Device Index {self.active_mic_index}"
@@ -192,11 +218,9 @@ class Listener:
                 stream.start_stream()
             except Exception as ex:
                 print(f"[Listener] Critical mic stream failure: {ex}")
-                self._run_fallback_loop()
                 return
 
-        # Initialize Grammar-Constrained Kaldi Recognizer for maximum wake accuracy
-        grammar_list = config.WAKE_WORDS + ["[unk]"]
+        grammar_list = config.WAKE_WORDS + ["stop speaking", "be quiet", "cancel", "[unk]"]
         grammar_json = json.dumps(grammar_list)
 
         try:
@@ -204,15 +228,34 @@ class Listener:
         except Exception:
             kaldi_rec = KaldiRecognizer(self.vosk_model, config.MIC_SAMPLE_RATE) if self.vosk_model else None
 
-        print("[Listener] Live acoustic surveillance engaged. Waiting for 'Hey Jarvis'...")
+        print("[Listener] Live acoustic surveillance engaged. Waiting for voice...")
 
         while self.is_running:
-            # When speaking or actively recording command, pause wake reads
-            if speaker.is_speaking or self._is_active_listening:
+            if self.is_paused:
+                time.sleep(0.1)
+                continue
+
+            # Interruption check: If JARVIS is speaking, we STILL read audio to catch 'stop speaking' or 'cancel'
+            if speaker.is_speaking:
+                try:
+                    data = stream.read(config.MIC_CHUNK_SIZE, exception_on_overflow=False)
+                    if kaldi_rec and kaldi_rec.AcceptWaveform(data):
+                        res = json.loads(kaldi_rec.Result())
+                        t = res.get("text", "").lower()
+                        if any(w in t for w in ["stop", "quiet", "cancel", "shut up"]):
+                            print("[Listener] User interrupted speech!")
+                            speaker.stop()
+                            sound_fx.play_alert()
+                except Exception:
+                    pass
+                time.sleep(0.04)
+                continue
+
+            if self._is_active_listening:
                 time.sleep(0.08)
                 continue
 
-            # Check manual trigger from UI
+            # Manual wake check
             if self._manual_wake_flag.is_set():
                 self._manual_wake_flag.clear()
                 self._notify_wake()
@@ -220,13 +263,11 @@ class Listener:
                 continue
 
             self._notify_state("STANDBY", f"Mic: {self.active_mic_name[:20]} | Say 'Hey Jarvis'")
+            task_manager.set_state(TaskState.IDLE, "Listening for 'Hey Jarvis'")
 
             try:
                 data = stream.read(config.MIC_CHUNK_SIZE, exception_on_overflow=False)
             except Exception:
-                continue
-
-            if speaker.is_speaking or self._is_active_listening:
                 continue
 
             if kaldi_rec:
@@ -262,40 +303,37 @@ class Listener:
         self._notify_wake()
 
         if trailing_command and len(trailing_command.split()) >= 1:
-            self._execute_command(trailing_command)
+            self._execute_command(stream, trailing_command)
         else:
             self._listen_for_command(stream)
 
     def _listen_for_command(self, stream):
-        """Suspends stream, prompts user, and records active command."""
+        """Prompts user and records active command."""
         self._is_active_listening = True
         self._notify_state("LISTENING", "Listening for command...")
+        task_manager.set_state(TaskState.LISTENING, "Listening for command...")
 
-        # 1. Stop PyAudio stream temporarily so SpeechRecognition can take the microphone without contention
         try:
             stream.stop_stream()
         except Exception:
             pass
 
-        # 2. Speak greeting acknowledgment
-        speaker.speak(f"At your service, {config.USER_NAME}.", block=True)
-
-        print(f"[Listener] Recording user directive on device [{self.active_mic_index}]...")
+        speaker.speak(f"Yes, I'm listening, {config.USER_NAME}.", block=True)
         self._notify_state("LISTENING", "Speak now...")
 
-        # 3. Capture command using SpeechRecognition on the EXACT physical microphone
         try:
             with sr.Microphone(device_index=self.active_mic_index) as source:
                 audio = self.recognizer.listen(source, timeout=6.0, phrase_time_limit=config.PHRASE_TIME_LIMIT)
                 self._notify_state("PROCESSING", "Analyzing speech...")
+                task_manager.set_state(TaskState.THINKING, "Analyzing speech...")
 
                 try:
                     command_text = self.recognizer.recognize_google(audio, language="en-US")
                     print(f"[Command Transcribed]: {command_text}")
-                    self._execute_command(command_text)
+                    self._execute_command(stream, command_text)
                 except sr.UnknownValueError:
                     sound_fx.play_alert()
-                    speaker.speak(f"I didn't quite catch that, {config.USER_NAME}.", block=False)
+                    speaker.speak(f"I didn't catch that, {config.USER_NAME}.", block=False)
                 except sr.RequestError:
                     speaker.speak("Speech recognition network service is currently unreachable.", block=False)
 
@@ -306,48 +344,30 @@ class Listener:
         finally:
             self._is_active_listening = False
             self._notify_state("STANDBY", f"Mic: {self.active_mic_name[:20]} | Say 'Hey Jarvis'")
-            # 4. Resume PyAudio stream for continuous background listening
+            task_manager.set_state(TaskState.IDLE, "Ready")
             try:
                 stream.start_stream()
             except Exception:
                 pass
 
-    def _execute_command(self, command_text: str):
-        """Processes and speaks command result."""
+    def _execute_command(self, stream, command_text: str):
+        """Processes and speaks command result, then resumes listening."""
         self._notify_transcript("User", command_text)
         self._notify_state("PROCESSING", f"Processing: {command_text}")
+        task_manager.set_state(TaskState.EXECUTING, f"Executing: {command_text}")
 
-        response = commander.process(command_text)
-        self._notify_transcript("JARVIS", response)
+        res = commander.process_structured(command_text)
+        spoken = res.get("spoken", "")
+        display = res.get("display", spoken)
 
-        speaker.speak(response, block=False)
+        self._notify_transcript("JARVIS", display)
+        self._notify_rich(res)
+
+        if spoken:
+            speaker.speak(spoken, block=False)
+
+        task_manager.set_state(TaskState.IDLE, "Ready")
         self._notify_state("STANDBY", f"Mic: {self.active_mic_name[:20]} | Say 'Hey Jarvis'")
 
-    def _run_fallback_loop(self):
-        """SpeechRecognition loop fallback."""
-        with sr.Microphone(device_index=self.active_mic_index) as source:
-            self.recognizer.adjust_for_ambient_noise(source, duration=0.6)
-            while self.is_running:
-                if speaker.is_speaking:
-                    time.sleep(0.1)
-                    continue
-                try:
-                    audio = self.recognizer.listen(source, timeout=3.0, phrase_time_limit=4.0)
-                    text = self.recognizer.recognize_google(audio).lower()
-                    is_wake, trailing = self._check_wake_word(text)
-                    if is_wake:
-                        sound_fx.play_wake()
-                        self._notify_wake()
-                        if trailing:
-                            self._execute_command(trailing)
-                        else:
-                            speaker.speak("Yes sir?", block=True)
-                            audio_cmd = self.recognizer.listen(source, timeout=5.0, phrase_time_limit=7.0)
-                            cmd = self.recognizer.recognize_google(audio_cmd)
-                            self._execute_command(cmd)
-                except Exception:
-                    continue
-
-
-# Global singleton instance
+# Global listener singleton
 listener = Listener()

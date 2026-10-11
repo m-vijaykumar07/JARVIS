@@ -296,15 +296,57 @@ class SystemActions:
     # PRODUCTIVITY & SHORTCUTS
     # -------------------------------------------------------------
     def take_screenshot(self) -> str:
-        """Captures full screen and saves to screenshots folder."""
+        """Captures full screen and saves to screenshots folder with multi-tier fallback."""
         try:
             timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             filename = config.SCREENSHOTS_DIR / f"JARVIS_Capture_{timestamp}.png"
-            pyautogui.screenshot(str(filename))
+            captured = False
 
-            # Open the captured screenshot in default viewer
-            subprocess.Popen(f'start "" "{filename}"', shell=True)
-            return f"Screenshot captured and saved to your Pictures folder, sir."
+            # Method 1: PyAutoGUI screenshot
+            try:
+                import pyautogui
+                img = pyautogui.screenshot()
+                if img:
+                    img.save(str(filename))
+                    captured = True
+            except Exception:
+                pass
+
+            # Method 2: Direct PIL ImageGrab
+            if not captured:
+                try:
+                    from PIL import ImageGrab
+                    img = ImageGrab.grab(all_screens=True)
+                    if img:
+                        img.save(str(filename))
+                        captured = True
+                except Exception:
+                    pass
+
+            # Method 3: Windows Native Win + PrtScn OS-level trigger
+            if not captured:
+                try:
+                    import ctypes
+                    user32 = ctypes.windll.user32
+                    VK_LWIN = 0x5B
+                    VK_SNAPSHOT = 0x2C
+                    user32.keybd_event(VK_LWIN, 0, 0, 0)
+                    user32.keybd_event(VK_SNAPSHOT, 0, 0, 0)
+                    time.sleep(0.05)
+                    user32.keybd_event(VK_SNAPSHOT, 0, 2, 0)
+                    user32.keybd_event(VK_LWIN, 0, 2, 0)
+                    return "Screenshot captured via Windows system shortcut and saved to your Pictures folder, sir."
+                except Exception:
+                    pass
+
+            if captured and filename.exists():
+                try:
+                    os.startfile(str(filename))
+                except Exception:
+                    pass
+                return "Screenshot captured and saved to your Pictures folder, sir."
+            else:
+                return "Unable to capture screen display at this moment, sir."
         except Exception as e:
             return f"Screenshot capture failed: {e}"
 

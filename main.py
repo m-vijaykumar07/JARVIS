@@ -16,9 +16,7 @@ def startup_greeting():
     """Initializes systems with audio chime and status announcement."""
     time.sleep(0.5)
     sound_fx.play_wake()
-    battery = system_actions.get_battery_status()
-    greeting = f"JARVIS online and fully operational. All core systems nominal, {config.USER_NAME}."
-    speaker.speak(greeting, block=False)
+    speaker.speak("Good morning. All systems are ready.", block=False)
 
 def main():
     print("=" * 60)

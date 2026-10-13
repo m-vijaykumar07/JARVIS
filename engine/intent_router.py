@@ -368,6 +368,19 @@ class IntentRouter:
             return {"spoken": thx, "display": thx, "type": "ai_response", "data": None}
 
         # -------------------------------------------------------------
+        # 8b. VOICE SWITCH COMMAND
+        # -------------------------------------------------------------
+        if any(w in cmd for w in ["switch to suvi voice", "use suvi voice", "enable suvi voice", "suvi voice on"]):
+            config.USE_CLONED_VOICE = True
+            msg = "Switched to Suvi cloned voice mode."
+            return {"spoken": msg, "display": msg, "type": "system", "data": None}
+
+        if any(w in cmd for w in ["switch to jarvis voice", "use jarvis voice", "use neural voice", "disable suvi voice", "suvi voice off"]):
+            config.USE_CLONED_VOICE = False
+            msg = "Switched to Edge-TTS neural voice mode."
+            return {"spoken": msg, "display": msg, "type": "system", "data": None}
+
+        # -------------------------------------------------------------
         # 9. GENERAL CONVERSATIONAL AI INTELLIGENCE (Contextual Multi-turn)
         # -------------------------------------------------------------
         task_manager.set_state(TaskState.THINKING, "Formulating response...")

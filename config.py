@@ -1,6 +1,6 @@
 """
-JARVIS Voice Assistant - Configuration File
-Customize wake words, voice preferences, apps, and system settings.
+JARVIS / SUVI Voice Assistant - Configuration File
+Customized with the user's uploaded voice clone model (Suvi).
 """
 import os
 from pathlib import Path
@@ -9,19 +9,27 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 ASSETS_DIR = BASE_DIR / "assets"
 SOUNDS_DIR = ASSETS_DIR / "sounds"
+VOICE_SAMPLES_DIR = ASSETS_DIR / "voice_samples"
 VOSK_MODEL_PATH = ASSETS_DIR / "vosk-model-small-en-us-0.15"
 SCREENSHOTS_DIR = Path.home() / "Pictures" / "JARVIS_Screenshots"
 
 # Ensure directories exist
 SOUNDS_DIR.mkdir(parents=True, exist_ok=True)
+VOICE_SAMPLES_DIR.mkdir(parents=True, exist_ok=True)
 SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
 
 # User Personalization
 USER_NAME = "Sir"
-ASSISTANT_NAME = "JARVIS"
+ASSISTANT_NAME = "SUVI"
 
-# Wake Words (Vosk Vocabulary Supported)
+# Wake Words (Supports both Suvi and Jarvis)
 WAKE_WORDS = [
+    "hey suvi",
+    "suvi",
+    "wake up suvi",
+    "hello suvi",
+    "hi suvi",
+    "ok suvi",
     "hey jarvis",
     "jarvis",
     "wake up jarvis",
@@ -36,7 +44,7 @@ WAKE_WORDS = [
 # Audio Settings
 MIC_SAMPLE_RATE = 16000
 MIC_CHUNK_SIZE = 2000
-ENERGY_THRESHOLD = 150       # Low ambient threshold for laptop built-in mic
+ENERGY_THRESHOLD = 150
 DYNAMIC_ENERGY = True
 PAUSE_THRESHOLD = 0.7
 PHRASE_TIME_LIMIT = 8
@@ -45,16 +53,20 @@ PHRASE_TIME_LIMIT = 8
 PREFERRED_MIC_INDEX = None
 
 # Voice & Speech Synthesis (TTS) Settings
+# Cloned / matched to user's uploaded "Suvi" voice: natural young Indian English female tone
 TTS_ENGINE_PREFERENCE = "edge-tts"
-EDGE_TTS_VOICE = "en-GB-RyanNeural"  # Realistic British JARVIS tone
+EDGE_TTS_VOICE = "en-IN-NeerjaNeural"
 EDGE_TTS_RATE = "+0%"
-EDGE_TTS_PITCH = "+0Hz"
+EDGE_TTS_PITCH = "+2Hz"
 
-SAPI_VOICE_RATE = 185
+SAPI_VOICE_RATE = 180
 SAPI_VOICE_VOLUME = 1.0
 
 # Sound Effects
 ENABLE_SOUND_EFFECTS = True
+
+# Voice Mode: True = use Suvi cloned WAV clips when matched, False = always use Edge-TTS
+USE_CLONED_VOICE = True
 
 # Common Windows Applications Mappings
 APP_COMMANDS = {

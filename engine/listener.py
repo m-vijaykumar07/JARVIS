@@ -318,7 +318,7 @@ class Listener:
         except Exception:
             pass
 
-        speaker.speak(f"Yes, I'm listening, {config.USER_NAME}.", block=True)
+        speaker.speak("I'm listening. Please tell me what you need.", block=True)
         self._notify_state("LISTENING", "Speak now...")
 
         try:

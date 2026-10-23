@@ -65,8 +65,9 @@ SAPI_VOICE_VOLUME = 1.0
 # Sound Effects
 ENABLE_SOUND_EFFECTS = True
 
-# Voice Mode: True = use Suvi cloned WAV clips when matched, False = always use Edge-TTS
+# Voice Mode: True = use Suvi cloned WAV clips for every command
 USE_CLONED_VOICE = True
+CLONED_VOICE_EVERY_COMMAND = True
 
 # Common Windows Applications Mappings
 APP_COMMANDS = {

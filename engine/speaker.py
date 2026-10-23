@@ -67,41 +67,126 @@ class Speaker:
                 pass
 
     def _match_cloned_clip(self, text: str) -> Path | None:
-        """Checks if text closely matches one of the user's recorded audio clips."""
+        """
+        Intelligently maps any command or response to one of Suvi's authentic cloned voice clips.
+        Ensures Suvi's real voice responds to EVERY command.
+        """
         lower = text.lower().strip()
-        if any(term in lower for term in ["i'm listening", "im listening", "listening. please tell me", "what you need"]):
+
+        # 1. Listening / Wake prompts
+        if any(term in lower for term in [
+            "i'm listening", "im listening", "tell me what you need", "what you need",
+            "listening. please tell me", "listening for command", "speak now"
+        ]):
             clip = self.cloned_clips.get("listening")
             if clip and clip.exists():
                 return clip
-        elif any(term in lower for term in ["on your command", "at your command", "certainly, i'm on"]):
-            clip = self.cloned_clips.get("on_command")
-            if clip and clip.exists():
-                return clip
-        elif any(term in lower for term in ["good morning", "all systems are ready", "systems are ready"]):
-            clip = self.cloned_clips.get("good_morning")
-            if clip and clip.exists():
-                return clip
-        elif any(term in lower for term in ["task has been completed", "completed successfully", "task completed"]):
-            clip = self.cloned_clips.get("task_completed")
-            if clip and clip.exists():
-                return clip
-        elif any(term in lower for term in ["searching for the information", "searching for information"]):
-            clip = self.cloned_clips.get("searching")
-            if clip and clip.exists():
-                return clip
-        elif any(term in lower for term in ["opening your files", "opening files"]):
-            clip = self.cloned_clips.get("opening_files")
-            if clip and clip.exists():
-                return clip
-        elif any(term in lower for term in ["ready to help", "if you need anything else"]):
-            clip = self.cloned_clips.get("ready_to_help")
-            if clip and clip.exists():
-                return clip
-        elif any(term in lower for term in ["always open to your heart", "thank you, always"]):
+
+        # 2. Gratitude / Thanks / Courtesies
+        if any(term in lower for term in [
+            "thank you", "thanks", "always at your service", "open to your heart",
+            "always open to your heart", "thank you, always", "my pleasure", "welcome"
+        ]):
             clip = self.cloned_clips.get("thank_you")
             if clip and clip.exists():
                 return clip
+
+        # 3. Morning / Startup greeting
+        if any(term in lower for term in [
+            "good morning", "all systems are ready", "systems are ready",
+            "systems nominal", "online and ready"
+        ]):
+            clip = self.cloned_clips.get("good_morning")
+            if clip and clip.exists():
+                return clip
+
+        # 4. Opening / Launching apps, files, directories, URLs, websites
+        if any(term in lower for term in [
+            "opening", "launching", "initializing", "started", "opened", "bring up",
+            "opening your files", "opening files", "starting", "launch ", "open ", "browser"
+        ]):
+            clip = self.cloned_clips.get("opening_files")
+            if clip and clip.exists():
+                return clip
+
+        # 5. Searching web, looking up data, queries, research
+        if any(term in lower for term in [
+            "searching", "searching for", "retrieving", "looking up", "search the web",
+            "search results", "finding information", "searching for the information"
+        ]):
+            clip = self.cloned_clips.get("searching")
+            if clip and clip.exists():
+                return clip
+
+        # 6. Completed tasks, adjustments, changes (Volume, Brightness, Notes, Screenshots, Mute, Window actions)
+        if any(term in lower for term in [
+            "completed", "task completed", "task has been completed", "successfully",
+            "volume set", "volume increased", "volume decreased", "audio muted", "audio unmuted",
+            "brightness adjusted", "screenshot captured", "note recorded", "saved note",
+            "desktop revealed", "window maximized", "window minimized", "switched to next window",
+            "recycle bin emptied", "terminated", "closed", "workstation locked", "cancelled",
+            "cleared", "switched"
+        ]):
+            clip = self.cloned_clips.get("task_completed")
+            if clip and clip.exists():
+                return clip
+
+        # 7. Help, readiness, exit, standby
+        if any(term in lower for term in [
+            "ready to help", "if you need anything else", "need anything else",
+            "help", "goodbye", "farewell", "bye", "standby"
+        ]):
+            clip = self.cloned_clips.get("ready_to_help")
+            if clip and clip.exists():
+                return clip
+
+        # 8. On command / directives / general commands / acknowledgments
+        if any(term in lower for term in [
+            "on your command", "at your command", "certainly, i'm on", "on command",
+            "certainly", "understood", "right away", "executing", "acknowledged",
+            "i am on your command", "proceed"
+        ]):
+            clip = self.cloned_clips.get("on_command")
+            if clip and clip.exists():
+                return clip
+
+        # 9. Default cloned clip for EVERY command when CLONED_VOICE_EVERY_COMMAND is active
+        if getattr(config, 'CLONED_VOICE_EVERY_COMMAND', True):
+            clip = self.cloned_clips.get("on_command")
+            if clip and clip.exists():
+                return clip
+
         return None
+
+    def _has_dynamic_payload(self, text: str) -> bool:
+        """Determines if the text contains specific data/information that should be voiced."""
+        lower = text.lower().strip()
+        # If it's pure canned action text, there is no separate payload needed
+        pure_actions = [
+            "opening your files", "task has been completed", "good morning. all systems are ready",
+            "i'm listening. please tell me what you need", "thank you, always open to your heart",
+            "i am ready to help, if you need anything else", "i am on your command",
+            "audio muted, sir.", "audio unmuted, sir.", "desktop revealed, sir.",
+            "switched to next window, sir.", "window maximized, sir.", "window minimized, sir.",
+            "workstation locked, sir."
+        ]
+        if any(pure in lower for pure in pure_actions):
+            return False
+
+        # If it has specific numbers, times, battery percentages, diagnostics, or detailed AI answers:
+        dynamic_markers = [
+            "current time", "the time is", "battery is", "cpu load", "ram usage",
+            "today is", "weather in", "clipboard contains", "saved notes",
+            "based on the data", "cybersecurity", "ethical hacking", "python"
+        ]
+        if any(m in lower for m in dynamic_markers):
+            return True
+
+        # If text is long (>70 chars), it's likely a descriptive conversational answer
+        if len(text) > 70:
+            return True
+
+        return False
 
     def _play_wav_clip(self, clip_path: Path) -> bool:
         """Plays real user-recorded WAV soundbite."""
@@ -195,12 +280,13 @@ class Speaker:
                 self._notify("SPEAKING", text)
                 print(f"\n[SUVI]: {text}")
 
-                # 1. Check for exact user-recorded audio clip (only if cloned voice mode is on)
+                # 1. Play Suvi cloned audio clip for every command
                 if getattr(config, 'USE_CLONED_VOICE', True):
                     clip_path = self._match_cloned_clip(text)
                     if clip_path and not self._stop_event.is_set():
                         success = self._play_wav_clip(clip_path)
-                        if success:
+                        # If the text is an action confirmation with no dynamic data, we are done!
+                        if success and not self._has_dynamic_payload(text):
                             self.is_speaking = False
                             self._notify("IDLE", "")
                             return

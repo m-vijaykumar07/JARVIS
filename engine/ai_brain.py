@@ -69,6 +69,33 @@ class AIBrain:
             except Exception as e:
                 print(f"[AIBrain] OpenAI call failed: {e}")
 
+        # Ollama Local LLM Integration (from SUVI Upgrade Scaffold)
+        try:
+            import requests
+            ollama_url = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434/api/chat")
+            ollama_model = os.getenv("OLLAMA_MODEL", "qwen2.5-coder:7b")
+            ollama_payload = {
+                "model": ollama_model,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are SUVI (Smart Unified Voice Intelligence), a helpful, personal AI assistant. "
+                            "Be clear, concise, direct, and conversational. Keep responses under 3 sentences for speech."
+                        )
+                    },
+                    {"role": "user", "content": prompt if not context else f"Context:\n{context}\n\nQuestion: {prompt}"}
+                ],
+                "stream": False
+            }
+            ollama_res = requests.post(ollama_url, json=ollama_payload, timeout=3)
+            if ollama_res.status_code == 200:
+                content = ollama_res.json().get("message", {}).get("content", "").strip()
+                if content:
+                    return content
+        except Exception:
+            pass
+
         # Local Smart Synthesizer (Zero-cost, Zero-key offline fallback)
         return self._local_synthesize(prompt, context)
 
